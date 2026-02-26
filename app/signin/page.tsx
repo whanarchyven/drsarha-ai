@@ -89,15 +89,7 @@ export default function SignIn() {
             >
               Вход
             </button>
-            <button
-              type="button"
-              onClick={() => setIsSignUp(true)}
-              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                isSignUp ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" : "text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              Регистрация
-            </button>
+            
           </div>
           <button
             type="submit"

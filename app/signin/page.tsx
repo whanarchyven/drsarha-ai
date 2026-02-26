@@ -3,12 +3,13 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Sparkles, Mail, Lock, LogIn } from "lucide-react";
+import { Sparkles, Mail, Lock, LogIn, UserPlus } from "lucide-react";
 
 export default function SignIn() {
   const { signIn } = useAuthActions();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
   const router = useRouter();
 
   return (
@@ -35,7 +36,7 @@ export default function SignIn() {
             setLoading(true);
             setError(null);
             const formData = new FormData(e.target as HTMLFormElement);
-            formData.set("flow", "signIn");
+            formData.set("flow", isSignUp ? "signUp" : "signIn");
             void signIn("password", formData)
               .then(() => router.push("/"))
               .catch((err) => {
@@ -78,6 +79,26 @@ export default function SignIn() {
             </div>
           </div>
 
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setIsSignUp(false)}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                !isSignUp ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              Вход
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSignUp(true)}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                isSignUp ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              Регистрация
+            </button>
+          </div>
           <button
             type="submit"
             disabled={loading}
@@ -85,10 +106,12 @@ export default function SignIn() {
           >
             {loading ? (
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            ) : isSignUp ? (
+              <UserPlus className="h-4 w-4" />
             ) : (
               <LogIn className="h-4 w-4" />
             )}
-            {loading ? "Вход..." : "Войти"}
+            {loading ? (isSignUp ? "Регистрация..." : "Вход...") : isSignUp ? "Зарегистрироваться" : "Войти"}
           </button>
 
           {error && (

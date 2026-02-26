@@ -18,19 +18,37 @@ const httpMethodValidator = v.union(
   v.literal("options"),
 );
 
+const inputValidator = v.object({
+  name: v.string(),
+  description: v.optional(v.string()),
+  active: v.optional(v.boolean()),
+});
+
 const methodVariableValidator = v.union(
   v.object({
     type: v.literal("literal"),
     name: v.string(),
+    description: v.optional(v.string()),
+    active: v.optional(v.boolean()),
     value: v.any(),
   }),
   v.object({
     type: v.literal("function"),
     name: v.string(),
+    description: v.optional(v.string()),
+    active: v.optional(v.boolean()),
     url: v.string(),
     method: httpMethodValidator,
     payload: v.any(),
     headers: v.record(v.string(), v.string()),
+    extractedVars: v.optional(
+      v.array(v.object({
+        path: v.string(),
+        varName: v.string(),
+        description: v.optional(v.string()),
+        active: v.optional(v.boolean()),
+      })),
+    ),
   }),
 );
 
@@ -38,10 +56,11 @@ const methodDocumentValidator = v.object({
   _id: v.id("methods"),
   _creationTime: v.number(),
   name: v.string(),
+  description: v.optional(v.string()),
   modelId: v.id("models"),
   prompt: v.string(),
   outputFormat: v.string(),
-  inputs: v.array(v.string()),
+  inputs: v.array(inputValidator),
   settings: v.optional(v.any()),
   variables: v.array(methodVariableValidator),
 });
@@ -143,10 +162,11 @@ export const getByName = query({
 export const create = mutation({
   args: {
     name: v.string(),
+    description: v.optional(v.string()),
     modelId: v.id("models"),
     prompt: v.string(),
     outputFormat: v.string(),
-    inputs: v.array(v.string()),
+    inputs: v.array(inputValidator),
     settings: v.optional(v.any()),
     variables: v.array(methodVariableValidator),
   },
@@ -167,6 +187,7 @@ export const create = mutation({
 
     return await ctx.db.insert("methods", {
       name: args.name,
+      description: args.description,
       modelId: args.modelId,
       prompt: args.prompt,
       outputFormat: args.outputFormat,
@@ -181,10 +202,11 @@ export const update = mutation({
   args: {
     id: v.id("methods"),
     name: v.optional(v.string()),
+    description: v.optional(v.string()),
     modelId: v.optional(v.id("models")),
     prompt: v.optional(v.string()),
     outputFormat: v.optional(v.string()),
-    inputs: v.optional(v.array(v.string())),
+    inputs: v.optional(v.array(inputValidator)),
     settings: v.optional(v.any()),
     variables: v.optional(v.array(methodVariableValidator)),
   },
@@ -212,16 +234,55 @@ export const update = mutation({
       }
     }
 
-    await ctx.db.patch(args.id, {
-      name: args.name,
-      modelId: args.modelId,
-      prompt: args.prompt,
-      outputFormat: args.outputFormat,
-      inputs: args.inputs,
-      settings: args.settings,
-      variables: args.variables,
-    });
+    const patch: Record<string, unknown> = {};
+    if (args.name !== undefined) patch.name = args.name;
+    if (args.description !== undefined) patch.description = args.description;
+    if (args.modelId !== undefined) patch.modelId = args.modelId;
+    if (args.prompt !== undefined) patch.prompt = args.prompt;
+    if (args.outputFormat !== undefined) patch.outputFormat = args.outputFormat;
+    if (args.inputs !== undefined) patch.inputs = args.inputs;
+    if (args.settings !== undefined) patch.settings = args.settings;
+    if (args.variables !== undefined) patch.variables = args.variables;
+    if (Object.keys(patch).length > 0) {
+      await ctx.db.patch(args.id, patch);
+    }
     return null;
+  },
+});
+
+export const testFunction = action({
+  args: {
+    url: v.string(),
+    method: httpMethodValidator,
+    payload: v.any(),
+    headers: v.record(v.string(), v.string()),
+    context: v.optional(v.record(v.string(), v.any())),
+  },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    const context = args.context ?? {};
+    const resolvedUrl = interpolateString(args.url, context);
+    const resolvedHeaders = interpolateAny(args.headers, context) as Record<string, string>;
+    const resolvedPayload = interpolateAny(args.payload, context);
+    const methodUpper = args.method.toUpperCase();
+    const shouldSendBody = methodUpper !== "GET" && methodUpper !== "DELETE";
+
+    const response = await fetch(resolvedUrl, {
+      method: methodUpper,
+      headers: {
+        "Content-Type": "application/json",
+        ...resolvedHeaders,
+      },
+      body: shouldSendBody ? JSON.stringify(resolvedPayload) : undefined,
+    });
+
+    const parsed = await parseResponse(response);
+    if (!response.ok) {
+      throw new Error(
+        `HTTP ${response.status}: ${serializeTemplateValue(parsed)}`,
+      );
+    }
+    return parsed;
   },
 });
 
@@ -312,12 +373,25 @@ export const runMethod = action({
             `Function variable "${variable.name}" failed with ${response.status}: ${serializeTemplateValue(parsed)}`,
           );
         }
-        return { name: variable.name, value: parsed };
+        return {
+          name: variable.name,
+          value: parsed,
+          extractedVars: variable.extractedVars ?? [],
+        };
       }),
     );
 
     for (const result of functionResults) {
       resolvedVariables[result.name] = result.value;
+      const responseObj = isRecord(result.value) ? result.value : null;
+      for (const { path, varName } of result.extractedVars) {
+        if (responseObj) {
+          const val = getValueByPath(responseObj, path);
+          if (val !== undefined) {
+            resolvedVariables[varName] = val;
+          }
+        }
+      }
     }
 
     const promptContext: Record<string, unknown> = { ...inputData, ...resolvedVariables };

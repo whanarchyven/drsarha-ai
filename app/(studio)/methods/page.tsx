@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Zap, Plus, Pencil, PlayCircle, Trash2, ArrowRightToLine, Variable, Braces, FileText, Globe } from "lucide-react";
+import { Zap, Plus, Pencil, PlayCircle, Trash2, Variable } from "lucide-react";
 
 export default function MethodsPage() {
   const methods = useQuery(api.methods.list) ?? [];
@@ -22,6 +22,9 @@ export default function MethodsPage() {
     }
   };
 
+  const role = useQuery(api.users.getMyRole);
+  const isAdmin = role === "admin";
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -32,12 +35,14 @@ export default function MethodsPage() {
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">Список всех AI-методов и быстрые действия</p>
         </div>
+       {isAdmin && (
         <Button asChild className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 shadow-lg shadow-amber-500/25 hover:from-amber-600 hover:to-orange-600">
           <Link href="/methods/new">
             <Plus className="h-4 w-4" />
             Новый метод
           </Link>
         </Button>
+       )}
       </header>
 
       <div className="grid gap-4">
@@ -51,66 +56,46 @@ export default function MethodsPage() {
                   </div>
                   <div>
                     <p className="font-semibold">{method.name}</p>
+                    {method.description && <p className="mt-0.5 text-sm text-muted-foreground line-clamp-1">{method.description}</p>}
                     <Badge variant="secondary" className="mt-1 font-mono text-xs">{method.outputFormat}</Badge>
                   </div>
                 </div>
               </div>
 
-              {(method.inputs.length > 0 || method.variables.length > 0) && (
-                <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/20 p-3 pl-[52px] sm:pl-4">
-                  {method.inputs.length > 0 && (
-                    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-                      <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                        <ArrowRightToLine className="h-3.5 w-3.5" />
-                        Входные параметры
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {method.inputs.map((input) => (
-                          <Badge
-                            key={input}
-                            variant="outline"
-                            className="gap-1 border-violet-200/70 bg-violet-50/80 font-mono text-xs dark:border-violet-800/50 dark:bg-violet-950/30"
-                          >
-                            <Variable className="h-3 w-3 shrink-0" />
-                            {input}
-                          </Badge>
-                        ))}
-                      </div>
+              {(() => {
+                const varsWithDesc: Array<{ name: string; description: string }> = [];
+                for (const i of method.inputs) {
+                  if (i.name && (i.active ?? true)) varsWithDesc.push({ name: i.name, description: i.description ?? "" });
+                }
+                for (const v of method.variables) {
+                  if (v.name && (v.active ?? true)) varsWithDesc.push({ name: v.name, description: v.description ?? "" });
+                  if (v.type === "function" && v.extractedVars) {
+                    for (const ev of v.extractedVars) {
+                      if (ev.varName && (ev.active ?? true)) varsWithDesc.push({ name: ev.varName, description: ev.description ?? `из ${v.name}` });
+                    }
+                  }
+                }
+                return varsWithDesc.length > 0 ? (
+                  <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/20 p-3 pl-[52px] sm:pl-4">
+                    <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <Variable className="h-3.5 w-3.5" />
+                      Доступные переменные
+                    </span>
+                    <div className="flex flex-col gap-1.5">
+                      {varsWithDesc.map((v, i) => (
+                        <div key={`${v.name}-${i}`} className="flex gap-3 items-baseline min-w-0">
+                          <span className="font-mono text-xs shrink-0">{v.name}</span>
+                          {v.description ? (
+                            <span className="text-[11px] text-muted-foreground break-words min-w-0">{v.description}</span>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground/50 italic">—</span>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  )}
-                  {method.variables.length > 0 && (
-                    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3">
-                      <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                        <Braces className="h-3.5 w-3.5" />
-                        Переменные
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {method.variables.map((v, i) => (
-                          <Badge
-                            key={`${v.name}-${i}`}
-                            variant="outline"
-                            className={v.type === "literal"
-                              ? "gap-1.5 border-amber-200/70 bg-amber-50/80 font-mono text-xs dark:border-amber-800/50 dark:bg-amber-950/30"
-                              : "gap-1.5 border-sky-200/70 bg-sky-50/80 font-mono text-xs dark:border-sky-800/50 dark:bg-sky-950/30"
-                            }
-                            title={v.type === "literal" ? "Константа" : "Функция HTTP"}
-                          >
-                            {v.type === "literal" ? (
-                              <FileText className="h-3 w-3 shrink-0" />
-                            ) : (
-                              <Globe className="h-3 w-3 shrink-0" />
-                            )}
-                            <span>{v.name}</span>
-                            <span className="text-[10px] opacity-80">
-                              · {v.type === "literal" ? "константа" : "функция"}
-                            </span>
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                ) : null;
+              })()}
 
               <p className="line-clamp-2 text-sm text-muted-foreground pl-[52px] sm:pl-0">{method.prompt}</p>
               <div className="flex flex-wrap gap-2 pl-[52px] sm:pl-0">

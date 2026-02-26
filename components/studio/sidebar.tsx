@@ -6,9 +6,11 @@ import { useConvexAuth } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Cpu, Zap, PlayCircle, LogOut, Sparkles } from "lucide-react";
+import { Cpu, Zap, PlayCircle, LogOut, Sparkles, Users } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
-const links = [
+const baseLinks = [
   { href: "/models", label: "Модели", icon: Cpu },
   { href: "/methods", label: "Методы", icon: Zap },
   { href: "/test", label: "Тест запуска", icon: PlayCircle },
@@ -19,6 +21,12 @@ export default function StudioSidebar() {
   const { isAuthenticated } = useConvexAuth();
   const { signOut } = useAuthActions();
   const router = useRouter();
+  const role = useQuery(api.users.getMyRole);
+  const isAdmin = role === "admin";
+  const links = [
+    ...baseLinks,
+    ...(isAdmin ? [{ href: "/users", label: "Пользователи", icon: Users }] : []),
+  ];
 
   return (
     <aside className="w-full border-r border-primary/10 bg-gradient-to-b from-card to-card/60 backdrop-blur md:w-64">

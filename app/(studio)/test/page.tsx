@@ -6,12 +6,11 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { isRecord, prettyJson, safeParseJson } from "@/components/studio/utils";
+import { isRecord, prettyJson } from "@/components/studio/utils";
 import { toast } from "sonner";
 import { PlayCircle, Play, FileJson, Terminal, ChevronDown } from "lucide-react";
 
@@ -47,7 +46,7 @@ export default function TestPage() {
   const runMethod = useAction(api.methods.runMethod);
 
   const [methodName, setMethodName] = useState(initialMethod);
-  const [inputText, setInputText] = useState("{}");
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState("");
   const [running, setRunning] = useState(false);
@@ -67,17 +66,15 @@ export default function TestPage() {
       toast.error("Выберите метод");
       return;
     }
-    const parsed = safeParseJson(inputText || "{}");
-    if (!parsed.ok) {
-      setError(`Некорректный JSON входных данных: ${parsed.error}`);
-      toast.error(`Некорректный JSON входных данных: ${parsed.error}`);
-      return;
+    const inputData: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(inputValues)) {
+      if (v.trim() !== "") inputData[k] = v.trim();
     }
     setError("");
     setResult(null);
     setRunning(true);
     try {
-      const response = await runMethod({ methodName: methodName.trim(), inputData: parsed.value });
+      const response = await runMethod({ methodName: methodName.trim(), inputData });
       setResult(response);
       toast.success("Метод выполнен");
     } catch (err) {
@@ -105,7 +102,7 @@ export default function TestPage() {
             <FileJson className="h-5 w-5 text-violet-500" />
             Входные данные
           </CardTitle>
-          <CardDescription>Можно вводить JSON или JSON5, например {`{theme:"Атопия"}`}</CardDescription>
+          <CardDescription>Заполните поля для входа в метод</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -124,38 +121,27 @@ export default function TestPage() {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Input JSON</Label>
-            {selectedMethod && (
-              <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="mb-2 text-xs text-muted-foreground">Доступные input для метода:</p>
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {selectedMethod.inputs.length > 0 ? (
-                    selectedMethod.inputs.map((inputName) => (
-                      <Badge key={inputName} variant="secondary">
-                        {inputName}
-                      </Badge>
-                    ))
-                  ) : (
-                    <span className="text-xs text-muted-foreground">У метода нет объявленных input.</span>
-                  )}
-                </div>
-                {selectedMethod.inputs.length > 0 && (
-                  <div>
-                    <p className="mb-1 text-xs text-muted-foreground">Пример тела запроса:</p>
-                    <pre className="rounded-md border bg-background p-2 text-xs">
-                      {prettyJson(
-                        Object.fromEntries(selectedMethod.inputs.map((inputName) => [inputName, ""])),
-                      )}
-                    </pre>
+            <Label>Входные данные</Label>
+            {selectedMethod && selectedMethod.inputs.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {selectedMethod.inputs.map((input) => (
+                  <div key={input.name} className="space-y-1">
+                    <Label htmlFor={`input-${input.name}`} className="text-xs font-mono">
+                      {input.name}
+                    </Label>
+                    <Input
+                      id={`input-${input.name}`}
+                      value={inputValues[input.name] ?? ""}
+                      onChange={(e) => setInputValues((p) => ({ ...p, [input.name]: e.target.value }))}
+                      placeholder={input.description || input.name}
+                      className="font-mono text-sm"
+                    />
                   </div>
-                )}
+                ))}
               </div>
-            )}
-            <Textarea
-              value={inputText}
-              onChange={(event) => setInputText(event.target.value)}
-              className="min-h-52 font-mono text-xs"
-            />
+            ) : selectedMethod ? (
+              <p className="text-sm text-muted-foreground">У метода нет объявленных input.</p>
+            ) : null}
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button

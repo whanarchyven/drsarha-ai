@@ -37,7 +37,13 @@ http.route({
         inputData: isRecord(payload) && "inputs" in payload ? payload.inputs : payload,
       });
 
-      return new Response(JSON.stringify(result), {
+      const resultRecord = result as Record<string, unknown>;
+      const body =
+        isRecord(result) && "outputOnly" in resultRecord && resultRecord.outputOnly === true
+          ? JSON.stringify(resultRecord.output)
+          : JSON.stringify(result);
+
+      return new Response(body, {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });

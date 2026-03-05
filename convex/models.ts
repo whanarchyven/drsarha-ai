@@ -5,6 +5,7 @@ const modelDocumentValidator = v.object({
   _id: v.id("models"),
   _creationTime: v.number(),
   name: v.string(),
+  type: v.optional(v.union(v.literal("text"), v.literal("image"))),
   code: v.optional(v.string()),
 });
 
@@ -42,6 +43,7 @@ export const getByName = query({
 export const create = mutation({
   args: {
     name: v.string(),
+    type: v.union(v.literal("text"), v.literal("image")),
     code: v.string(),
   },
   returns: v.id("models"),
@@ -56,6 +58,7 @@ export const create = mutation({
 
     return await ctx.db.insert("models", {
       name: args.name,
+      type: args.type,
       code: args.code,
     });
   },
@@ -65,6 +68,7 @@ export const update = mutation({
   args: {
     id: v.id("models"),
     name: v.optional(v.string()),
+    type: v.optional(v.union(v.literal("text"), v.literal("image"))),
     code: v.optional(v.string()),
   },
   returns: v.null(),
@@ -84,10 +88,13 @@ export const update = mutation({
       }
     }
 
-    await ctx.db.patch(args.id, {
-      name: args.name,
-      code: args.code,
-    });
+    const patch: Record<string, unknown> = {};
+    if (args.name !== undefined) patch.name = args.name;
+    if (args.type !== undefined) patch.type = args.type;
+    if (args.code !== undefined) patch.code = args.code;
+    if (Object.keys(patch).length > 0) {
+      await ctx.db.patch(args.id, patch);
+    }
     return null;
   },
 });

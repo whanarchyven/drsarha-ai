@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Cpu, Plus, Pencil, Trash2 } from "lucide-react";
+import { Cpu, Plus, Pencil, Trash2, Type, Image } from "lucide-react";
 
 export default function ModelsPage() {
   const models = useQuery(api.models.list) ?? [];
@@ -54,7 +54,13 @@ export default function ModelsPage() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary" className="gap-1 font-mono">model</Badge>
+                <Badge variant="secondary" className="gap-1 font-mono">
+                  {(model as { type?: string }).type === "image" ? (
+                    <><Image className="h-3 w-3" /> image</>
+                  ) : (
+                    <><Type className="h-3 w-3" /> text</>
+                  )}
+                </Badge>
                 <Button variant="outline" size="sm" asChild className="gap-1.5 border-violet-200/60 hover:bg-violet-50 dark:border-violet-800/50 dark:hover:bg-violet-950/30">
                   <Link href={`/models/${model._id}/edit`}>
                     <Pencil className="h-3.5 w-3.5" />

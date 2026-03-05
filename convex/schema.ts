@@ -17,6 +17,7 @@ export default defineSchema({
     .index("by_role", ["role"]),
   models: defineTable({
     name: v.string(),
+    type: v.optional(v.union(v.literal("text"), v.literal("image"))),
     code: v.optional(v.string()),
   }).index("by_name", ["name"]),
   methods: defineTable({
@@ -25,6 +26,7 @@ export default defineSchema({
     modelId: v.id("models"),
     prompt: v.string(),
     outputFormat: v.string(),
+    outputField: v.optional(v.string()),
     inputs: v.array(
       v.object({
         name: v.string(),

@@ -60,6 +60,7 @@ const methodDocumentValidator = v.object({
   modelId: v.id("models"),
   prompt: v.string(),
   outputFormat: v.string(),
+  outputField: v.optional(v.string()),
   inputs: v.array(inputValidator),
   settings: v.optional(v.any()),
   variables: v.array(methodVariableValidator),
@@ -117,16 +118,15 @@ async function parseResponse(response: Response): Promise<unknown> {
   return await response.text();
 }
 
-type RunMethodResponse = {
-  methodName: string;
-  prompt: string;
-  resolvedVariables: Record<string, unknown>;
-  output: unknown;
-  model: {
-    name: string;
-    code: string;
-  };
-};
+type RunMethodResponse =
+  | {
+      methodName: string;
+      prompt: string;
+      resolvedVariables: Record<string, unknown>;
+      output: unknown;
+      model: { name: string; code: string };
+    }
+  | { output: unknown; outputOnly: true };
 
 export const list = query({
   args: {},
@@ -166,6 +166,7 @@ export const create = mutation({
     modelId: v.id("models"),
     prompt: v.string(),
     outputFormat: v.string(),
+    outputField: v.optional(v.string()),
     inputs: v.array(inputValidator),
     settings: v.optional(v.any()),
     variables: v.array(methodVariableValidator),
@@ -191,6 +192,7 @@ export const create = mutation({
       modelId: args.modelId,
       prompt: args.prompt,
       outputFormat: args.outputFormat,
+      outputField: args.outputField,
       inputs: args.inputs,
       settings: args.settings,
       variables: args.variables,
@@ -206,6 +208,7 @@ export const update = mutation({
     modelId: v.optional(v.id("models")),
     prompt: v.optional(v.string()),
     outputFormat: v.optional(v.string()),
+    outputField: v.optional(v.string()),
     inputs: v.optional(v.array(inputValidator)),
     settings: v.optional(v.any()),
     variables: v.optional(v.array(methodVariableValidator)),
@@ -240,6 +243,7 @@ export const update = mutation({
     if (args.modelId !== undefined) patch.modelId = args.modelId;
     if (args.prompt !== undefined) patch.prompt = args.prompt;
     if (args.outputFormat !== undefined) patch.outputFormat = args.outputFormat;
+    if (args.outputField !== undefined) patch.outputField = args.outputField;
     if (args.inputs !== undefined) patch.inputs = args.inputs;
     if (args.settings !== undefined) patch.settings = args.settings;
     if (args.variables !== undefined) patch.variables = args.variables;
@@ -302,16 +306,22 @@ export const runMethod = action({
     methodName: v.string(),
     inputData: v.any(),
   },
-  returns: v.object({
-    methodName: v.string(),
-    prompt: v.string(),
-    resolvedVariables: v.record(v.string(), v.any()),
-    output: v.any(),
-    model: v.object({
-      name: v.string(),
-      code: v.string(),
+  returns: v.union(
+    v.object({
+      methodName: v.string(),
+      prompt: v.string(),
+      resolvedVariables: v.record(v.string(), v.any()),
+      output: v.any(),
+      model: v.object({
+        name: v.string(),
+        code: v.string(),
+      }),
     }),
-  }),
+    v.object({
+      output: v.any(),
+      outputOnly: v.literal(true),
+    }),
+  ),
   handler: async (ctx, args): Promise<RunMethodResponse> => {
     const method: Doc<"methods"> | null = await ctx.runQuery(api.methods.getByName, {
       name: args.methodName,
@@ -396,31 +406,73 @@ export const runMethod = action({
 
     const promptContext: Record<string, unknown> = { ...inputData, ...resolvedVariables };
     const interpolatedPrompt = interpolateString(method.prompt, promptContext);
-    const finalPrompt = `${interpolatedPrompt}\n\nФормат выходных данных ${method.outputFormat}`;
+    const modelType = model.type ?? "text";
 
-    const modelResponse = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openaiApiKey}`,
-      },
-      body: JSON.stringify({
+    let output: unknown;
+    let resolvedOutput: unknown;
+    let finalPrompt: string;
+
+    if (modelType === "image") {
+      finalPrompt = interpolatedPrompt;
+      const isDallE = /^dall-e-/.test(model.code ?? "");
+      const imageBody: Record<string, unknown> = {
         model: model.code,
-        input: finalPrompt,
-      }),
-    });
+        prompt: finalPrompt,
+        n: 1,
+      };
+      if (isDallE) {
+        imageBody.response_format = "url";
+        imageBody.size = "1024x1024";
+      }
+      const imageResponse = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openaiApiKey}`,
+        },
+        body: JSON.stringify(imageBody),
+      });
 
-    const output = await parseResponse(modelResponse);
-    if (!modelResponse.ok) {
-      throw new Error(
-        `Model "${model.name}" request failed with ${modelResponse.status}: ${serializeTemplateValue(output)}`,
-      );
+      output = await parseResponse(imageResponse);
+      if (!imageResponse.ok) {
+        throw new Error(
+          `Model "${model.name}" request failed with ${imageResponse.status}: ${serializeTemplateValue(output)}`,
+        );
+      }
+
+      const data = isRecord(output) && Array.isArray((output as { data?: unknown }).data)
+        ? (output as { data: Array<{ url?: string; b64_json?: string }> }).data
+        : [];
+      const first = data[0];
+      resolvedOutput = first?.url ?? first?.b64_json ?? output;
+    } else {
+      finalPrompt = `${interpolatedPrompt}\n\nФормат выходных данных ${method.outputFormat}`;
+      const modelResponse = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openaiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: model.code,
+          input: finalPrompt,
+        }),
+      });
+
+      output = await parseResponse(modelResponse);
+      if (!modelResponse.ok) {
+        throw new Error(
+          `Model "${model.name}" request failed with ${modelResponse.status}: ${serializeTemplateValue(output)}`,
+        );
+      }
+
+      resolvedOutput =
+        isRecord(output) && typeof (output as { output_text?: string }).output_text === "string"
+          ? (output as { output_text: string }).output_text
+          : output;
     }
 
-    const resolvedOutput =
-      isRecord(output) && typeof output.output_text === "string" ? output.output_text : output;
-
-    return {
+    const fullResponse = {
       methodName: method.name,
       prompt: finalPrompt,
       resolvedVariables,
@@ -430,5 +482,17 @@ export const runMethod = action({
         code: model.code,
       },
     };
+
+    const outputField = method.outputField?.trim();
+    if (outputField) {
+      const extracted = getValueByPath(fullResponse as unknown as Record<string, unknown>, outputField);
+      const outputValue = extracted !== undefined ? extracted : resolvedOutput;
+      return {
+        output: outputValue,
+        outputOnly: true as const,
+      };
+    }
+
+    return fullResponse;
   },
 });

@@ -14,8 +14,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Zap, Save, ArrowLeft, Plus, Trash2, Play, ChevronDown } from "lucide-react";
+import { Zap, Save, ArrowLeft, Plus, Trash2, Play, ChevronDown, Terminal, FileJson } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import PromptEditor from "./prompt-editor";
 import { TemplateInput } from "./template-input";
 import { extractPromptTokens, isRecord, safeParseJson, prettyJson, tokenStyle } from "./utils";
@@ -193,17 +194,23 @@ export default function MethodForm({ methodId }: { methodId?: Id<"methods"> }) {
   const createMethod = useMutation(api.methods.create);
   const updateMethod = useMutation(api.methods.update);
   const testFunction = useAction(api.methods.testFunction);
+  const runMethod = useAction(api.methods.runMethod);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [modelId, setModelId] = useState("");
   const [inputs, setInputs] = useState<Array<InputDraft>>([]);
   const [outputFormat, setOutputFormat] = useState("JSON");
+  const [outputField, setOutputField] = useState("");
   const [settingsText, setSettingsText] = useState("{}");
   const [prompt, setPrompt] = useState("");
   const [variables, setVariables] = useState<Array<VariableDraft>>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [testInputValues, setTestInputValues] = useState<Record<string, string>>({});
+  const [testResult, setTestResult] = useState<unknown>(null);
+  const [testRunning, setTestRunning] = useState(false);
+  const [testShowFull, setTestShowFull] = useState(false);
 
   useEffect(() => {
     if (!method) return;
@@ -212,6 +219,7 @@ export default function MethodForm({ methodId }: { methodId?: Id<"methods"> }) {
     setModelId(method.modelId);
     setInputs(normalizeInputs(method.inputs));
     setOutputFormat(method.outputFormat);
+    setOutputField((method as { outputField?: string }).outputField ?? "");
     setSettingsText(method.settings === undefined ? "{}" : prettyJson(method.settings));
     setPrompt(method.prompt);
     setVariables(toDraftVariables(method.variables));
@@ -288,6 +296,7 @@ export default function MethodForm({ methodId }: { methodId?: Id<"methods"> }) {
           modelId: modelId as Id<"models">,
           prompt,
           outputFormat,
+          outputField: outputField.trim() || undefined,
           inputs: inputList,
           settings: parsedSettings.value,
           variables: builtVariables,
@@ -300,6 +309,7 @@ export default function MethodForm({ methodId }: { methodId?: Id<"methods"> }) {
           modelId: modelId as Id<"models">,
           prompt,
           outputFormat,
+          outputField: outputField.trim() || undefined,
           inputs: inputList,
           settings: parsedSettings.value,
           variables: builtVariables,
@@ -529,6 +539,17 @@ export default function MethodForm({ methodId }: { methodId?: Id<"methods"> }) {
             <Textarea value={settingsText} onChange={(e) => setSettingsText(e.target.value)} className="font-mono text-xs" />
           </div>
 
+          <div className="space-y-2">
+            <Label>Поле вывода (опционально)</Label>
+            <Input
+              value={outputField}
+              onChange={(e) => setOutputField(e.target.value)}
+              placeholder="output.output.0.content.0.text — пусто = полный ответ"
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">Путь к полю в ответе (точечная нотация). Пусто — возвращать полный ответ.</p>
+          </div>
+
           <Separator />
 
           <div className="space-y-3">
@@ -538,8 +559,94 @@ export default function MethodForm({ methodId }: { methodId?: Id<"methods"> }) {
               onChange={setPrompt}
               variables={variablesWithDescriptions}
             />
-            
           </div>
+
+          {methodId && role === "admin" && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-2">
+                    <Terminal className="h-4 w-4 text-emerald-500" />
+                    Тест метода
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="test-full-switch" className="text-xs text-muted-foreground">
+                      Полный ответ
+                    </Label>
+                    <Switch id="test-full-switch" checked={testShowFull} onCheckedChange={setTestShowFull} />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">Запустите метод с тестовыми данными (только для админа)</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {inputs.filter((i) => i.name.trim()).map((input) => (
+                    <div key={input.id} className="space-y-1">
+                      <Label htmlFor={`test-${input.name}`} className="text-xs font-mono">
+                        {input.name}
+                      </Label>
+                      <Input
+                        id={`test-${input.name}`}
+                        value={testInputValues[input.name] ?? ""}
+                        onChange={(e) => setTestInputValues((p) => ({ ...p, [input.name]: e.target.value }))}
+                        placeholder={input.description || input.name}
+                        className="font-mono text-sm"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  onClick={async () => {
+                    setTestResult(null);
+                    setTestRunning(true);
+                    const inputData: Record<string, unknown> = {};
+                    for (const [k, v] of Object.entries(testInputValues)) {
+                      if (v.trim() !== "") inputData[k] = v.trim();
+                    }
+                    try {
+                      const res = await runMethod({
+                        methodName: (method?.name ?? name.trim()) || "",
+                        inputData,
+                      });
+                      setTestResult(res);
+                      toast.success("Метод выполнен");
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Ошибка");
+                      setTestResult({ error: err instanceof Error ? err.message : "Ошибка" });
+                    } finally {
+                      setTestRunning(false);
+                    }
+                  }}
+                  disabled={testRunning || !name.trim()}
+                  className="gap-2 bg-gradient-to-r from-emerald-600 to-teal-600"
+                >
+                  {testRunning ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                  {testRunning ? "Выполняю..." : "Запустить тест"}
+                </Button>
+                <div className="min-h-24 rounded-lg border bg-muted/30 p-3">
+                  <p className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
+                    <FileJson className="h-3 w-3" />
+                    Результат
+                    {outputField.trim() && ` (поле: ${outputField.trim()})`}
+                  </p>
+                  <pre className="max-h-64 overflow-auto text-xs">
+                    {testResult !== null
+                      ? prettyJson(
+                          testShowFull
+                            ? testResult
+                            : isRecord(testResult) && "output" in testResult
+                              ? testResult.output
+                              : testResult,
+                        )
+                      : "Нажмите «Запустить тест»"}
+                  </pre>
+                </div>
+              </div>
+            </>
+          )}
 
           {error && <p className="text-sm text-destructive">{error}</p>}
           <div className="flex gap-2">

@@ -52,6 +52,22 @@ export function tokenStyle(token: string): { backgroundColor: string; color: str
   };
 }
 
+export function getValueByPath(source: Record<string, unknown>, path: string): unknown {
+  return path.split(".").reduce<unknown>((acc, segment) => {
+    if (acc === undefined || acc === null || typeof acc !== "object") {
+      return undefined;
+    }
+    return (acc as Record<string, unknown>)[segment];
+  }, source);
+}
+
+export function extractOutputByPath(result: unknown, path: string | undefined): unknown {
+  if (!path?.trim()) return result;
+  if (!isRecord(result)) return result;
+  const extracted = getValueByPath(result, path.trim());
+  return extracted !== undefined ? extracted : result;
+}
+
 export function extractPromptTokens(prompt: string): Array<string> {
   const tokens = new Set<string>();
   const regex = /{{\s*([\w.]+)\s*}}/g;

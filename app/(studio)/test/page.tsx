@@ -6,10 +6,9 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { isRecord, prettyJson } from "@/components/studio/utils";
 import { toast } from "sonner";
 import { PlayCircle, Play, FileJson, Terminal, ChevronDown } from "lucide-react";
@@ -50,9 +49,18 @@ export default function TestPage() {
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState("");
   const [running, setRunning] = useState(false);
-  const [showFullResponse, setShowFullResponse] = useState(false);
   const selectedMethod = methods.find((method) => method.name === methodName) ?? null;
-  const extractedText = extractOutputText(result);
+  const rawOutput =
+    result !== null && isRecord(result) && "output" in result ? result.output : null;
+  const displayValue =
+    typeof rawOutput === "string"
+      ? rawOutput
+      : extractOutputText(result) ?? (result !== null ? prettyJson(result) : null);
+
+  const isBase64Image = (s: string) => {
+    const clean = s.replace(/\s/g, "");
+    return /^[A-Za-z0-9+/]+=*$/.test(clean) && clean.length > 100 && !s.trimStart().startsWith("{") && !s.trimStart().startsWith("[");
+  };
 
   useEffect(() => {
     if (!methodName && initialMethod) {
@@ -123,18 +131,19 @@ export default function TestPage() {
           <div className="space-y-2">
             <Label>Входные данные</Label>
             {selectedMethod && selectedMethod.inputs.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-3">
                 {selectedMethod.inputs.map((input) => (
                   <div key={input.name} className="space-y-1">
                     <Label htmlFor={`input-${input.name}`} className="text-xs font-mono">
                       {input.name}
                     </Label>
-                    <Input
+                    <Textarea
                       id={`input-${input.name}`}
                       value={inputValues[input.name] ?? ""}
                       onChange={(e) => setInputValues((p) => ({ ...p, [input.name]: e.target.value }))}
                       placeholder={input.description || input.name}
-                      className="font-mono text-sm"
+                      className="font-mono text-sm min-h-20"
+                      rows={3}
                     />
                   </div>
                 ))}
@@ -166,37 +175,32 @@ export default function TestPage() {
 
       <Card className="card-gradient-border shadow-md">
         <CardHeader>
-          <div className="flex items-center justify-between gap-3">
-            <CardTitle className="flex items-center gap-2">
-              <Terminal className="h-5 w-5 text-emerald-500" />
-              Результат
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <Label htmlFor="full-response-switch" className="text-xs text-muted-foreground">
-                Полный ответ
-              </Label>
-              <Switch
-                id="full-response-switch"
-                checked={showFullResponse}
-                onCheckedChange={setShowFullResponse}
-              />
-            </div>
-          </div>
+          <CardTitle className="flex items-center gap-2">
+            <Terminal className="h-5 w-5 text-emerald-500" />
+            Результат
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {result === null ? (
             <pre className="max-h-[640px] overflow-auto rounded-lg border bg-muted/30 p-4 text-xs">
               Запустите метод.
             </pre>
-          ) : showFullResponse ? (
-            <pre className="max-h-[640px] overflow-auto rounded-lg border bg-muted/30 p-4 text-xs">
-              {prettyJson(result)}
-            </pre>
-          ) : (
+          ) : typeof displayValue === "string" && isBase64Image(displayValue) ? (
             <div className="max-h-[640px] overflow-auto rounded-lg border bg-muted/30 p-4">
-              <p className="mb-3 text-xs text-muted-foreground">Показывается только `output.content.text`</p>
-              <div className="whitespace-pre-wrap text-sm leading-6">{extractedText ?? prettyJson(result)}</div>
+              <img
+                src={`data:image/png;base64,${displayValue.replace(/\s/g, "")}`}
+                alt="Сгенерированное изображение"
+                className="max-w-full rounded-lg"
+              />
             </div>
+          ) : typeof displayValue === "string" && !displayValue.trimStart().startsWith("{") && !displayValue.trimStart().startsWith("[") ? (
+            <div className="max-h-[640px] overflow-auto rounded-lg border bg-muted/30 p-4">
+              <div className="whitespace-pre-wrap text-sm leading-6">{displayValue}</div>
+            </div>
+          ) : (
+            <pre className="max-h-[640px] overflow-auto rounded-lg border bg-muted/30 p-4 text-xs">
+              {displayValue}
+            </pre>
           )}
         </CardContent>
       </Card>

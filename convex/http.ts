@@ -32,7 +32,7 @@ http.route({
     }
 
     try {
-      const result = await ctx.runAction(api.methods.runMethod, {
+      const result = await ctx.runAction(api.methodActions.runMethod, {
         methodName,
         inputData: isRecord(payload) && "inputs" in payload ? payload.inputs : payload,
       });

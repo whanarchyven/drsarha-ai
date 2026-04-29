@@ -194,7 +194,7 @@ export default function MethodForm({ methodId }: { methodId?: Id<"methods"> }) {
   const createMethod = useMutation(api.methods.create);
   const updateMethod = useMutation(api.methods.update);
   const testFunction = useAction(api.methods.testFunction);
-  const runMethod = useAction(api.methods.runMethod);
+  const runMethod = useAction(api.methodActions.runMethod);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");

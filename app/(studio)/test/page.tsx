@@ -42,7 +42,7 @@ export default function TestPage() {
   const searchParams = useSearchParams();
   const initialMethod = searchParams.get("method") ?? "";
   const methods = useQuery(api.methods.list) ?? [];
-  const runMethod = useAction(api.methods.runMethod);
+  const runMethod = useAction(api.methodActions.runMethod);
 
   const [methodName, setMethodName] = useState(initialMethod);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});

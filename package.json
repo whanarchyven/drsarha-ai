@@ -25,7 +25,8 @@
     "react-dom": "^19.2.4",
     "react-simple-code-editor": "^0.14.1",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.5.0",
+    "undici": "^6.25.0"
   },
   "devDependencies": {
     "@convex-dev/eslint-plugin": "^1.1.1",

@@ -10,9 +10,12 @@
 
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
+import type * as methodActions from "../methodActions.js";
+import type * as methodShared from "../methodShared.js";
 import type * as methods from "../methods.js";
 import type * as migrations from "../migrations.js";
 import type * as models from "../models.js";
+import type * as openaiFetch from "../openaiFetch.js";
 import type * as users from "../users.js";
 
 import type {
@@ -24,9 +27,12 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   http: typeof http;
+  methodActions: typeof methodActions;
+  methodShared: typeof methodShared;
   methods: typeof methods;
   migrations: typeof migrations;
   models: typeof models;
+  openaiFetch: typeof openaiFetch;
   users: typeof users;
 }>;
 
